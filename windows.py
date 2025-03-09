@@ -5,7 +5,6 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Qt, Signal
 
 
-# TODO fix measure time and user
 class MeasureWindow(QWidget):
     def __init__(self, sig):
         super().__init__()
@@ -51,12 +50,14 @@ class MeasureWindow(QWidget):
             if not isinstance(w, QLineEdit):
                 continue
             v = w.text()
+            w.clear()
             if v.isdigit():
                 v = int(v)
             elif v.replace('.', '', 1).replace(',', '', 1).isdigit():
                 v = float(v)
             params.append(v)
-            
+        
+        self.close()
         self.sig.emit(params)
 
 
