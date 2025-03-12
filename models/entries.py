@@ -5,9 +5,10 @@ from .models import Base
 HEADERS = [
     "ID", "Эксперимент", "Время", "Температура", "Давление", 'Влажность', 'Датчик4',
     'Датчик5', 'Датчик6(Сред)', 'Датчик6(Дисп)', 'Набл20', 'Набл43', 'Набл58']
-COLUMNS = [
+MUTABLE_COLUMNS = [
     'research', 'time', 'temperature', 'pressure', 'humidity', 'sensor4' ,'sensor5', 
     'sensor6_mean', 'sensor6_var', 'observation20', 'observation43', 'observation58']
+COLUMNS = ['id'] + MUTABLE_COLUMNS
 
 
 class Entries(Base):
@@ -60,7 +61,11 @@ class DataTableModel(QAbstractTableModel):
             entry.observation43,
             entry.observation58
         ]
-        return column_map[column]
+        res = column_map[column]
+        if not isinstance(res, float):
+            return res
+        return round(res, 4)
+        # return column_map[column]
 
     def headerData(self, section, orientation, role=Qt.DisplayRole):
         if role == Qt.DisplayRole and orientation == Qt.Horizontal:

@@ -1,6 +1,6 @@
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QMessageBox,
-    QTableView, QHeaderView, QLineEdit, QTabWidget
+    QTableView, QHeaderView, QLineEdit, QTabWidget, QComboBox
 )
 from PySide6.QtCore import Qt, Signal
 
@@ -63,10 +63,23 @@ class MeasureWindow(QWidget):
 
 # TODO filter
 class FilterWindow(QWidget):
-    def __init__(self, *args, **kwargs):
+    def __init__(self, sig, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        self.sig = sig
         self.setWindowTitle("Фильтрация")
-        self.setGeometry(800, 100, 200, 100)
+        self.setGeometry(800, 100, 600, 300)
         
+
         
+        ul = QVBoxLayout()
+        # TODO users columns
+
+        el = QVBoxLayout()
+        # TODO entry columns
         
+        layout = QHBoxLayout()
+        layout.addLayout(ul)
+        layout.addLayout(el)
+        
+    def set_cmb(self, name):
+        cmb = QComboBox(editable=True, duplicatesEnabled=False)

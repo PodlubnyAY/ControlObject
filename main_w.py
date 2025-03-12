@@ -2,10 +2,10 @@ import logging
 import numpy as np
 from functools import partial
 from datetime import datetime
-
+    
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QMessageBox,
-    QTableView, QHeaderView, QLineEdit, QTabWidget
+    QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QMessageBox, QGridLayout,
+    QTableView, QHeaderView, QLineEdit, QTabWidget, QLabel, QComboBox
 )
 from PySide6.QtCore import Qt, QSortFilterProxyModel, Signal
 
@@ -15,30 +15,48 @@ import models
 from windows import MeasureWindow, FilterWindow
 
 
+def fill_cmb(cmb, column_name):
+    """Заполняет QComboBox уникальными значениями из столбца БД"""
+    cmb.clear()
+    cmb.addItem("Все")  # Опция для сброса фильтра
+
+    with models.Session() as session:
+        # Получаем уникальные значения столбца
+        table = models.users.User if hasattr(models.users.User, column_name) else models.entries.Entries
+        values = session.query(getattr(table, column_name)).distinct().all()
+        if values and isinstance(values[0][0], float):
+            values = map(lambda v: (round(v[0], 3),), values)
+        for value in sorted(set(values)):
+            cmb.addItem(str(value[0]))
+
+
 def get_frame(measurements):
     frame = []
     for ch in sorted(measurements):
         if ch in config.BASE_CHANNELS:
-            frame.append(measurements[ch])
+            frame.append(round(measurements[ch], 4))
             if (b := config.BORDERS.get(ch)) and b[0] > measurements[ch] > b[1]:
+                # TODO make warns for user too
                 logging.warning('')
         else:
-            frame.append(np.mean(measurements[ch]))
-            frame.append(np.var(measurements[ch]))
+            frame.append(round(np.mean(measurements[ch]), 4))
+            frame.append(round(np.var(measurements[ch]), 4))
     return frame
 
 
 class MainWindow(QWidget):
     measure_params_sig = Signal(list)
+    filter_params_sig = Signal(list)
     def __init__(self):
         super().__init__()
         self.measure_params_sig.connect(self.get_frame)
+        # self.filter_params_sig.connect(self.run_filter)
         self.plant = plantm.Plant()
         self.setWindowTitle("ТППОСУ Бригада 9")
         self.setGeometry(200, 200, 1200, 500)
         self.windows = {
             'measure': MeasureWindow(self.measure_params_sig),
-            'filter': FilterWindow(),
+            # 'filter': FilterWindow(self.filter_params_sig),
         }
         
         # Кнопки
@@ -47,42 +65,86 @@ class MainWindow(QWidget):
             clicked=partial(self.show_window, 'measure'))
         filter_button = QPushButton(
             "Фильтровать",
-            clicked=partial(self.show_window, 'filter'))
+            clicked=self.toggle_filter)
+        save_button = QPushButton(
+            "Сохранить выборку",
+        )
         exit_button = QPushButton("Выход", clicked=self.close_all)
         # delete_button = QPushButton("Удалить")
         # delete_button.clicked.connect(self.delete_user)
+        self.filter_layout = QVBoxLayout()
+        self.filter_container = QWidget()  # Контейнер для фильтров
+        self.filter_container.setLayout(self.filter_layout)
+        self.filter_container.setVisible(False)  # По умолчанию скрыт
+        self.filter_widgets = []  # Список всех комбобоксов
+        # self.create_filter_widgets()  # Создаем фильтры сразу
 
         # Таблица
-        tab = QTabWidget()
+        tab_widget = QTabWidget()
         
         self.users_view = QTableView(sortingEnabled=True)
         self.load_users()
-        tab.addTab(self.users_view, "Users")
+        tab_widget.addTab(self.users_view, "Users")
         
         self.entries_view = QTableView(sortingEnabled=True)
         self.load_entries()
         
-        tab.addTab(self.entries_view, "Entries")
+        tab_widget.addTab(self.entries_view, "Entries")
         
         btns_layout = QHBoxLayout()
         btns_layout.addWidget(add_button)
         btns_layout.addWidget(filter_button)
+        btns_layout.addWidget(save_button)
         # btns_layout.addWidget(delete_button)
         
         layout = QVBoxLayout()
         layout.addLayout(btns_layout)
+        layout.addWidget(self.filter_container)
         # layout.addWidget(self.table_view)
-        layout.addWidget(tab)
+        layout.addWidget(tab_widget)
         layout.addWidget(exit_button)
         layout.setAlignment(
             exit_button,
-            Qt.AlignmentFlag.AlignBottom | Qt.AlignmentFlag.AlignRight)
+            Qt.AlignmentFlag.AlignBottom| Qt.AlignmentFlag.AlignRight)
         self.setLayout(layout)
     
     def close_all(self):
         for w in self.windows.values():
             w.close()
         self.close()
+
+    def toggle_filter(self):
+        """Показывает/скрывает все комбобоксы"""
+        state = not self.filter_container.isVisible()
+        if state:
+            self.create_filter_widgets()
+        self.filter_container.setVisible(state)
+
+    def create_filter_widgets(self):
+        """Создаёт комбобоксы для всех таблиц сразу"""
+        columns = {
+            "Users": zip(models.users.HEADERS, models.users.COLUMNS),
+            "Entries": zip(models.entries.HEADERS, models.entries.COLUMNS)
+        }
+        for table_name, col_names in columns.items():
+            tabs_layout = QHBoxLayout()
+            tabs_layout.addWidget(QLabel(table_name))
+            for name, col in col_names:
+                filter_layout = QVBoxLayout()  # Лейаут для метки + комбобокса
+                label = QLabel(f"{name}")  # Метка сверху
+                combo = QComboBox()
+                combo.setEditable(True)
+                combo.addItem("Все")  # Значение для сброса фильтра
+                fill_cmb(combo, col)
+                # combo.addItems(["Значение 1", "Значение 2", "Значение 3"])  # Заглушка
+                filter_layout.addWidget(label)
+                filter_layout.addWidget(combo)
+
+                container = QWidget()  # Контейнер для группировки
+                container.setLayout(filter_layout)
+                tabs_layout.addWidget(container)
+                self.filter_widgets.append(container)  # Сохраняем в список
+            self.filter_layout.addLayout(tabs_layout)
     
     def show_window(self, name, *args):
         if self.windows.get(name) is None:
@@ -134,7 +196,7 @@ class MainWindow(QWidget):
     def get_frame(self, args):
         username, n_frames, comment = args
         date = datetime.now().date()
-        kwargs = dict(zip(models.users.COLUMNS, [date, username, comment]))
+        kwargs = dict(zip(models.users.MUTABLE_COLUMNS, [date, username, comment]))
         user = models.users.User(**kwargs)
         with models.Session() as session:
             session.add(user)
@@ -151,12 +213,12 @@ class MainWindow(QWidget):
             if results is None:
                 continue
             frame += get_frame(results)
-            kwargs = dict(zip(models.entries.COLUMNS, frame))
+            kwargs = dict(zip(models.entries.MUTABLE_COLUMNS, frame))
             entry = models.entries.Entries(**kwargs)
             with models.Session() as session:
                 session.add(entry)
                 session.commit()
-            # frames.append()
+
             n_frames -= 1
         self.load_entries()
         self.load_users()

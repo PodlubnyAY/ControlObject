@@ -3,7 +3,8 @@ from PySide6.QtCore import Qt, QAbstractTableModel
 from .models import Base
 
 HEADERS = ["Эксперимент", "Дата", "Пользователь", 'Комментарий']
-COLUMNS = ['date', 'user', 'comment']
+COLUMNS = ['research', 'date', 'user', 'comment']
+MUTABLE_COLUMNS = ['date', 'user', 'comment']
 
 
 class User(Base):
