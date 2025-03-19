@@ -1,15 +1,15 @@
 from sqlalchemy import Column, Integer, Float, Time
 from PySide6.QtCore import Qt, QAbstractTableModel
-from .models import Base
+from . import Base
 
 HEADERS = [
-    "ID", "Эксперимент", "Время", "Температура", "Давление", 'Влажность', 'Датчик4',
+    "ID", "Эксперимент", "Время (ЧЧ:ММ:СС)", "Температура", "Давление", 'Влажность', 'Датчик4',
     'Датчик5', 'Датчик6(Сред)', 'Датчик6(Дисп)', 'Набл20', 'Набл43', 'Набл58']
 MUTABLE_COLUMNS = [
     'research', 'time', 'temperature', 'pressure', 'humidity', 'sensor4' ,'sensor5', 
     'sensor6_mean', 'sensor6_var', 'observation20', 'observation43', 'observation58']
 COLUMNS = ['id'] + MUTABLE_COLUMNS
-
+TIME_FORMAT = '%H:%M:%S'
 
 class Entries(Base):
     __tablename__ = "entries"
@@ -49,7 +49,7 @@ class DataTableModel(QAbstractTableModel):
         column_map = [
             entry.id,
             entry.research,
-            str(entry.time),
+            entry.time.strftime(TIME_FORMAT),
             entry.temperature,
             entry.pressure,
             entry.humidity,

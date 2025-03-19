@@ -1,11 +1,11 @@
 from sqlalchemy import Column, Integer, String, Date
 from PySide6.QtCore import Qt, QAbstractTableModel
-from .models import Base
+from . import Base
 
-HEADERS = ["Эксперимент", "Дата", "Пользователь", 'Комментарий']
+HEADERS = ["Эксперимент", "Дата (ДД.ММ.ГГГГ)", "Пользователь", 'Комментарий']
 COLUMNS = ['research', 'date', 'user', 'comment']
 MUTABLE_COLUMNS = ['date', 'user', 'comment']
-
+DATE_FORMAT = '%d.%m.%Y'
 
 class User(Base):
     __tablename__ = "users"
@@ -35,7 +35,7 @@ class UserTableModel(QAbstractTableModel):
         column = index.column()
         column_map = [
             user.research,
-            str(user.date),
+            user.date.strftime(DATE_FORMAT),
             user.user,
             user.comment,
         ]
