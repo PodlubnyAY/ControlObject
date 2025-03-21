@@ -93,12 +93,12 @@ class MainWindow(QWidget):
         
         self.users_view = QTableView(sortingEnabled=True)
         self.load_users()
-        tab_widget.addTab(self.users_view, "Users")
+        tab_widget.addTab(self.users_view, "Пользователи")
         
         self.entries_view = QTableView(sortingEnabled=True)
         self.load_entries()
         
-        tab_widget.addTab(self.entries_view, "Entries")
+        tab_widget.addTab(self.entries_view, "Кадры")
         
         btns_layout = QHBoxLayout()
         btns_layout.addWidget(add_button)
@@ -294,7 +294,7 @@ class MainWindow(QWidget):
             elif ch in config.STABLE_CHANNELS:
                 m = self.plant.measure(ch)
                 if (last := stable.get(ch)) is not None and last != m:
-                    logger.error(f'{ch} not stable ({last}->{m})')
+                    logger.error(f'канал {ch}: нарушение стабильности ({last}->{m})')
                     return None
                 stable[ch] = m
             elif ch in config.MV_CHANNELS:
