@@ -133,10 +133,13 @@ class MainWindow(QWidget):
     def toggle_filter(self):
         """Показывает/скрывает все комбобоксы и сбрасывает фильтры"""
         state = not self.filter_container.isVisible()
+        filter_button = self.layout().itemAt(0).itemAt(1).widget()
         if state:
+            filter_button.setText('Сброс')
             if not self.filter_widgets:  # Проверяем, если комбобоксы еще не созданы
                 self.create_filter_widgets()
         else:
+            filter_button.setText('Фильтровать')
             self.clear_filters()
         self.filter_container.setVisible(state)
 
