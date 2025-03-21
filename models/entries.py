@@ -82,30 +82,29 @@ class DataTableModel(QAbstractTableModel):
         row = index.row()
         column = index.column()
 
-        if row == len(self.entries):  # Строка среднего
+        if row < len(self.entries):
+            entry = self.entries[row]
+            column_map = [
+                entry.id, entry.research, entry.time.strftime(TIME_FORMAT),
+                entry.temperature, entry.pressure, entry.humidity,
+                entry.sensor4, entry.sensor5, entry.sensor6_mean,
+                entry.sensor6_var, entry.observation20, entry.observation43,
+                entry.observation58
+            ]
+            res = column_map[column]
+            if not isinstance(res, (int, float)):
+                return res
+            return round(res, 3)
+        elif row == len(self.entries):
             if self.means[column] is not None:
-                return f'{round(self.means[column], 3):.3f}'
-                v = round(self.means[column], 3)
-                return v
-            return np.nan
-        elif row > len(self.entries):  # Строка дисперсии
+                m = self.means[column]
+                return f'{m:.3f}'
+            return '-'
+        else:
             if self.variances[column] is not None:
-                v = round(self.variances[column], 3)
+                v = self.variances[column]
                 return f'{v:.3f}'
-            return np.nan
-
-        entry = self.entries[row]
-        column_map = [
-            entry.id, entry.research, entry.time.strftime(TIME_FORMAT),
-            entry.temperature, entry.pressure, entry.humidity,
-            entry.sensor4, entry.sensor5, entry.sensor6_mean,
-            entry.sensor6_var, entry.observation20, entry.observation43,
-            entry.observation58
-        ]
-        res = column_map[column]
-        if not isinstance(res, (int, float)):
-            return res
-        return round(res, 4)
+            return '-'
 
     def headerData(self, section, orientation, role=Qt.DisplayRole):
         if role == Qt.DisplayRole:
