@@ -70,3 +70,11 @@ class FilterProxyModel(QSortFilterProxyModel):
                 except ValueError:
                     pass
         return accept
+    
+    def lessThan(self, source_left, source_right):
+        if self.sourceModel().data(source_left) == '-':
+            return False
+        if self.sourceModel().data(source_right) == '-':
+            return True
+        return super().lessThan(source_left, source_right)
+        
