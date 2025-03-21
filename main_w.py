@@ -265,6 +265,7 @@ class MainWindow(QWidget):
         with models.Session() as session:
             entries = session.query(models.entries.Entries).all()
         self.entry_model = models.entries.DataTableModel(entries)
+        self.entry_model.calculate_statistics()
         self.entry_proxy_model = models.FilterProxyModel(models.entries.COLUMNS)
         self.entry_proxy_model.setSourceModel(self.entry_model)
         self.entries_view.setModel(self.entry_proxy_model)

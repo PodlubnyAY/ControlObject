@@ -1,5 +1,6 @@
 from sqlalchemy import Column, Integer, Float, Time
 from PySide6.QtCore import Qt, QAbstractTableModel
+import numpy as np
 from . import Base
 
 HEADERS = [
@@ -33,9 +34,43 @@ class DataTableModel(QAbstractTableModel):
     def __init__(self, entries, parent=None):
         super().__init__(parent)
         self.entries = entries
+        self.show_statistics = True
+        self.means = [None] * 13
+        self.variances = [None] * 13
+
+    def enable_statistics(self, enable=True):
+        self.show_statistics = enable
+        if enable:
+            self.calculate_statistics()
+        self.layoutChanged.emit()
+
+    def calculate_statistics(self):
+        for col in range(3, 13):  # Столбцы для статистики
+            column_data = []
+            for entry in self.entries:
+                column_map = [
+                    entry.id, entry.research, entry.time.strftime(TIME_FORMAT),
+                    entry.temperature, entry.pressure, entry.humidity,
+                    entry.sensor4, entry.sensor5, entry.sensor6_mean,
+                    entry.sensor6_var, entry.observation20, entry.observation43,
+                    entry.observation58
+                ]
+                value = column_map[col]
+                if isinstance(value, (int, float)):
+                    column_data.append(value)
+
+            if column_data:
+                self.means[col] = np.mean(column_data)
+                self.variances[col] = np.var(column_data)
+            else:
+                self.means[col] = None
+                self.variances[col] = None
 
     def rowCount(self, parent=None):
-        return len(self.entries)
+        count = len(self.entries)
+        if self.show_statistics:
+            count += 2
+        return count
 
     def columnCount(self, parent=None):
         return 13
@@ -44,30 +79,41 @@ class DataTableModel(QAbstractTableModel):
         if not index.isValid() or role != Qt.DisplayRole:
             return None
 
-        entry = self.entries[index.row()]
+        row = index.row()
         column = index.column()
+
+        if row == len(self.entries):  # Строка среднего
+            if self.means[column] is not None:
+                return f'{round(self.means[column], 3):.3f}'
+                v = round(self.means[column], 3)
+                return v
+            return np.nan
+        elif row > len(self.entries):  # Строка дисперсии
+            if self.variances[column] is not None:
+                v = round(self.variances[column], 3)
+                return f'{v:.3f}'
+            return np.nan
+
+        entry = self.entries[row]
         column_map = [
-            entry.id,
-            entry.research,
-            entry.time.strftime(TIME_FORMAT),
-            entry.temperature,
-            entry.pressure,
-            entry.humidity,
-            entry.sensor4,
-            entry.sensor5,
-            entry.sensor6_mean,
-            entry.sensor6_var,
-            entry.observation20,
-            entry.observation43,
+            entry.id, entry.research, entry.time.strftime(TIME_FORMAT),
+            entry.temperature, entry.pressure, entry.humidity,
+            entry.sensor4, entry.sensor5, entry.sensor6_mean,
+            entry.sensor6_var, entry.observation20, entry.observation43,
             entry.observation58
         ]
         res = column_map[column]
-        if not isinstance(res, float):
+        if not isinstance(res, (int, float)):
             return res
         return round(res, 4)
-        # return column_map[column]
 
     def headerData(self, section, orientation, role=Qt.DisplayRole):
-        if role == Qt.DisplayRole and orientation == Qt.Horizontal:
-            return HEADERS[section]
-
+        if role == Qt.DisplayRole:
+            if orientation == Qt.Horizontal:
+                return HEADERS[section]
+            elif orientation == Qt.Vertical and self.show_statistics:
+                if section == len(self.entries):
+                    return "Среднее"
+                elif section == len(self.entries) + 1:
+                    return "Дисперсия"
+        return None
