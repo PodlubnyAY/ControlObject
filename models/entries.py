@@ -1,5 +1,5 @@
 from sqlalchemy import Column, Integer, Float, Time
-from PySide6.QtCore import Qt, QAbstractTableModel
+from PySide6.QtCore import Qt, QAbstractTableModel, QModelIndex
 import numpy as np
 from . import Base
 
@@ -34,15 +34,6 @@ class DataTableModel(QAbstractTableModel):
     def __init__(self, entries, parent=None):
         super().__init__(parent)
         self.entries = entries
-        self.show_statistics = True
-        self.means = [None] * 13
-        self.variances = [None] * 13
-
-    def enable_statistics(self, enable=True):
-        self.show_statistics = enable
-        if enable:
-            self.calculate_statistics()
-        self.layoutChanged.emit()
 
     def calculate_statistics(self):
         for col in range(3, 13):  # Столбцы для статистики
@@ -59,18 +50,8 @@ class DataTableModel(QAbstractTableModel):
                 if isinstance(value, (int, float)):
                     column_data.append(value)
 
-            if column_data:
-                self.means[col] = np.mean(column_data)
-                self.variances[col] = np.var(column_data)
-            else:
-                self.means[col] = None
-                self.variances[col] = None
-
     def rowCount(self, parent=None):
-        count = len(self.entries)
-        if self.show_statistics:
-            count += 2
-        return count
+        return len(self.entries)
 
     def columnCount(self, parent=None):
         return 13
@@ -82,37 +63,69 @@ class DataTableModel(QAbstractTableModel):
         row = index.row()
         column = index.column()
 
-        if row < len(self.entries):
-            entry = self.entries[row]
-            column_map = [
-                entry.id, entry.research, entry.time.strftime(TIME_FORMAT),
-                entry.temperature, entry.pressure, entry.humidity,
-                entry.sensor4, entry.sensor5, entry.sensor6_mean,
-                entry.sensor6_var, entry.observation20, entry.observation43,
-                entry.observation58
-            ]
-            res = column_map[column]
-            if not isinstance(res, (int, float)):
-                return res
-            return round(res, 3)
-        elif row == len(self.entries):
-            if self.means[column] is not None:
-                m = self.means[column]
-                return f'{m:.3f}'
-            return '-'
-        else:
-            if self.variances[column] is not None:
-                v = self.variances[column]
-                return f'{v:.3f}'
-            return '-'
+        entry = self.entries[row]
+        column_map = [
+            entry.id, entry.research, entry.time.strftime(TIME_FORMAT),
+            entry.temperature, entry.pressure, entry.humidity,
+            entry.sensor4, entry.sensor5, entry.sensor6_mean,
+            entry.sensor6_var, entry.observation20, entry.observation43,
+            entry.observation58
+        ]
+        res = column_map[column]
+        if not isinstance(res, (int, float)):
+            return res
+        return round(res, 3)
 
     def headerData(self, section, orientation, role=Qt.DisplayRole):
         if role == Qt.DisplayRole:
             if orientation == Qt.Horizontal:
                 return HEADERS[section]
-            elif orientation == Qt.Vertical and self.show_statistics:
-                if section == len(self.entries):
-                    return "Среднее"
-                elif section == len(self.entries) + 1:
-                    return "Дисперсия"
+
+        return None
+
+
+class EntryStatsModel(QAbstractTableModel):
+    def __init__(self):
+        super().__init__()
+        self._stats = {}
+        self._cols = []
+        self.headers = []
+        
+    def setStats(self, stats_data):
+        self.beginResetModel()
+        self._stats = stats_data
+        self.endResetModel()
+        
+    def setStatsColumns(self, numeric_columns, labels=None):
+        self._cols = numeric_columns
+        self.headers = labels or self._cols
+        
+    def rowCount(self, parent=QModelIndex()):
+        return 2
+        
+    def columnCount(self, parent=QModelIndex()):
+        return len(self._cols) + 1  # +1 для названий показателей
+        
+    def data(self, index, role=Qt.DisplayRole):
+        if role == Qt.DisplayRole:
+            row = index.row()
+            col = index.column()
+            column_index = self._cols[col - 1]
+            if row == 0:  # Среднее
+                mean = self._stats.get(column_index, (None, None))[0]
+                return f"{mean:.2f}" if mean is not None else "-"
+            else:  # Дисперсия
+                var = self._stats.get(column_index, (None, None))[1]
+                return f"{var:.2f}" if var is not None else "-"
+        return None
+
+    def headerData(self, section, orientation, role=Qt.DisplayRole):
+        if role == Qt.DisplayRole:
+            if orientation == Qt.Horizontal:
+                if section == 0:
+                    return "Показатель"
+                else:
+                    return self.headers[self._cols[section-1]]
+            elif orientation == Qt.Vertical:
+                return ["Среднее", "Дисперсия"][section]
         return None
