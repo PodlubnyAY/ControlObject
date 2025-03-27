@@ -105,24 +105,19 @@ class MainWindow(QWidget):
         btns_layout.addWidget(filter_button)
         btns_layout.addWidget(save_button)
         
-        #footer
-        footer = QWidget()
-        footer_layout = QHBoxLayout()
         logpane = widgets.LogWidget(level=logger.level)
         logger.addHandler(logpane)
-        footer_layout.addWidget(logpane)
-        footer_layout.addWidget(exit_button)
-        footer_layout.setAlignment(
-            exit_button,
-            Qt.AlignmentFlag.AlignBottom| Qt.AlignmentFlag.AlignRight)
-        footer.setLayout(footer_layout)
         
         layout = QVBoxLayout()
         layout.addLayout(btns_layout)
         layout.addWidget(self.filter_container, stretch=2)
         # layout.addWidget(self.table_view)
         layout.addWidget(tab_widget, stretch=6)
-        layout.addWidget(footer, stretch=1)
+        layout.addWidget(logpane, stretch=1)
+        layout.addWidget(exit_button)
+        layout.setAlignment(
+            exit_button,
+            Qt.AlignmentFlag.AlignBottom| Qt.AlignmentFlag.AlignRight)
         self.setLayout(layout)
     
     def close_all(self):
