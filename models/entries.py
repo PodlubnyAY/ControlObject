@@ -104,14 +104,12 @@ class EntryStatsModel(QAbstractTableModel):
         return 2
         
     def columnCount(self, parent=QModelIndex()):
-        return len(self._cols) + 1  # +1 для названий показателей
+        return len(self._cols)
         
     def data(self, index, role=Qt.DisplayRole):
         if role == Qt.DisplayRole:
-            row = index.row()
-            col = index.column()
-            column_index = self._cols[col - 1]
-            if row == 0:  # Среднее
+            column_index = self._cols[index.column()]
+            if index.row() == 0:  # Среднее
                 mean = self._stats.get(column_index, (None, None))[0]
                 return f"{mean:.2f}" if mean is not None else "-"
             else:  # Дисперсия
@@ -122,10 +120,8 @@ class EntryStatsModel(QAbstractTableModel):
     def headerData(self, section, orientation, role=Qt.DisplayRole):
         if role == Qt.DisplayRole:
             if orientation == Qt.Horizontal:
-                if section == 0:
-                    return "Показатель"
-                else:
-                    return self.headers[self._cols[section-1]]
+                i = self._cols[section]
+                return self.headers[i]
             elif orientation == Qt.Vertical:
                 return ["Среднее", "Дисперсия"][section]
         return None

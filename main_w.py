@@ -3,16 +3,16 @@ import numpy as np
 from functools import partial
 from datetime import datetime
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QMessageBox, QGridLayout,
-    QTableView, QHeaderView, QLineEdit, QTabWidget, QLabel, QComboBox, QPlainTextDocumentLayout
+    QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QGridLayout,
+    QTableView, QHeaderView, QLineEdit, QTabWidget, QLabel, QComboBox
 )
-from PySide6.QtCore import Qt, QSortFilterProxyModel, Signal
+from PySide6.QtCore import Qt, Signal
 
 import plantm
 import config
 import models
 import widgets
-from windows import MeasureWindow, FilterWindow
+from windows import MeasureWindow
 
 logger = logging.getLogger('measuring')
 logger.setLevel(10)
@@ -77,6 +77,7 @@ class MainWindow(QWidget):
             clicked=self.toggle_filter)
         save_button = QPushButton(
             "Сохранить выборку",
+            # clicked=self.save_view
         )
         exit_button = QPushButton("Выход", clicked=self.close_all)
 
@@ -88,7 +89,7 @@ class MainWindow(QWidget):
         self.general_widgets = []
         # self.create_filter_widgets()  # Создаем фильтры сразу
 
-        # Таблица
+        # Таблицы
         tab_widget = QTabWidget()
         
         self.users_view = QTableView(sortingEnabled=True)
@@ -113,6 +114,8 @@ class MainWindow(QWidget):
         layout.addWidget(self.filter_container, stretch=2)
         # layout.addWidget(self.table_view)
         layout.addWidget(tab_widget, stretch=6)
+        self.stats_table.setFixedHeight(80)
+        layout.addWidget(self.stats_table)
         layout.addWidget(logpane, stretch=1)
         layout.addWidget(exit_button)
         layout.setAlignment(
@@ -149,6 +152,7 @@ class MainWindow(QWidget):
 
     def get_line_edit(self, table_name, column_number, placeholder):
         edit = QLineEdit(placeholderText=placeholder)
+        edit.setFixedSize(100, 20)
         edit.textChanged.connect(
             partial(
                 self.update_range_filter,
@@ -215,6 +219,7 @@ class MainWindow(QWidget):
         if table_name != "Users":
             proxy_model = self.entry_proxy_model
         proxy_model.set_combo_filter(column_name, filter_value)
+        self.update_statistics()
     
     def update_range_filter(self, table_name, column, ismin, text, *args):
         proxy_model = self.user_proxy_model
@@ -228,6 +233,7 @@ class MainWindow(QWidget):
             max_value = value
 
         proxy_model.set_range_filter(column, min_value, max_value)
+        self.update_statistics()
 
     def clear_filters(self):
         """Очищает все фильтры и сбрасывает комбобоксы"""
@@ -263,14 +269,30 @@ class MainWindow(QWidget):
         with models.Session() as session:
             entries = session.query(models.entries.Entries).all()
         self.entry_model = models.entries.DataTableModel(entries)
-        self.entry_model.calculate_statistics()
         self.entry_proxy_model = models.FilterProxyModel(models.entries.COLUMNS)
         self.entry_proxy_model.setSourceModel(self.entry_model)
+
+        self.stats_model = models.entries.EntryStatsModel()
+        self.stats_model.setStatsColumns(
+            list(range(3, len(models.entries.COLUMNS))),
+            models.entries.HEADERS)
+        
         self.entries_view.setModel(self.entry_proxy_model)
         self.entries_view.resizeColumnsToContents()
         header = self.entries_view.horizontalHeader()
         header.setSectionResizeMode(QHeaderView.Stretch)
         header.setSectionResizeMode(0, QHeaderView.ResizeToContents)
+        
+        self.stats_table = QTableView()
+        self.stats_table.setModel(self.stats_model)
+        self.stats_table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+        vHeader = self.stats_table.verticalHeader()
+        vHeader.setSectionResizeMode(QHeaderView.Stretch)
+        width = sum(self.entries_view.columnWidth(i) for i in range(4))
+        vHeader.setFixedWidth(width)
+        vHeader.setMinimumWidth(width)
+        self.stats_table.setMaximumHeight(150)
+        self.update_statistics()
 
     def load_users(self):
         """Загружает данные из базы и обновляет модель"""
@@ -335,3 +357,31 @@ class MainWindow(QWidget):
         self.filter_widgets.clear()
         self.create_filter_widgets()
         return frames
+
+    def calculate_statistics(self):
+        stats = {}
+        rows = self.entry_proxy_model.rowCount()
+        cols = self.entry_proxy_model.columnCount()
+        
+        for col in range(cols):
+            values = []
+            for row in range(rows):
+                idx = self.entry_proxy_model.index(row, col)
+                val = self.entry_proxy_model.data(idx, Qt.DisplayRole)
+                try:
+                    values.append(float(val))
+                except:
+                    continue
+
+            if values:
+                mean = sum(values) / len(values)
+                variance = sum((x - mean)**2 for x in values) / len(values)
+                stats[col] = (mean, variance)
+            else:
+                stats[col] = (None, None)
+        
+        return stats
+
+    def update_statistics(self):
+        stats = self.calculate_statistics()
+        self.stats_model.setStats(stats)

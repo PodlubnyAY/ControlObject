@@ -5,7 +5,6 @@ from .entries import TIME_FORMAT
 
 
 class FilterProxyModel(QSortFilterProxyModel):
-# class FilterProxyModel(QSortFilterProxyModel):
     def __init__(self, columns, parent=None):
         super().__init__(parent)
         self.columns = columns
