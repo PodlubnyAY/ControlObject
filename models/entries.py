@@ -91,11 +91,6 @@ class EntryStatsModel(QAbstractTableModel):
         self._cols = []
         self.headers = []
         
-    def setStats(self, stats_data):
-        self.beginResetModel()
-        self._stats = stats_data
-        self.endResetModel()
-        
     def setStatsColumns(self, numeric_columns, labels=None):
         self._cols = numeric_columns
         self.headers = labels or self._cols
@@ -125,3 +120,30 @@ class EntryStatsModel(QAbstractTableModel):
             elif orientation == Qt.Vertical:
                 return ["Среднее", "Дисперсия"][section]
         return None
+
+    def setProxyModel(self, proxy):
+        self.proxy = proxy
+    
+    def updateStats(self):
+        rows = self.proxy.rowCount()
+        cols = self.proxy.columnCount()
+
+        for col in range(cols):
+            values = []
+            for row in range(rows):
+                idx = self.proxy.index(row, col)
+                val = self.proxy.data(idx, Qt.DisplayRole)
+                try:
+                    values.append(float(val))
+                except:
+                    continue
+
+            if values:
+                mean = sum(values) / len(values)
+                variance = sum((x - mean)**2 for x in values) / len(values)
+                self._stats[col] = (mean, variance)
+            else:
+                self._stats[col] = (None, None)
+
+        self.beginResetModel()
+        self.endResetModel()

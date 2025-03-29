@@ -219,7 +219,7 @@ class MainWindow(QWidget):
         if table_name != "Users":
             proxy_model = self.entry_proxy_model
         proxy_model.set_combo_filter(column_name, filter_value)
-        self.update_statistics()
+        self.stats_model.updateStats()
     
     def update_range_filter(self, table_name, column, ismin, text, *args):
         proxy_model = self.user_proxy_model
@@ -233,7 +233,7 @@ class MainWindow(QWidget):
             max_value = value
 
         proxy_model.set_range_filter(column, min_value, max_value)
-        self.update_statistics()
+        self.stats_model.updateStats()
 
     def clear_filters(self):
         """Очищает все фильтры и сбрасывает комбобоксы"""
@@ -273,6 +273,7 @@ class MainWindow(QWidget):
         self.entry_proxy_model.setSourceModel(self.entry_model)
 
         self.stats_model = models.entries.EntryStatsModel()
+        self.stats_model.setProxyModel(self.entry_proxy_model)
         self.stats_model.setStatsColumns(
             list(range(3, len(models.entries.COLUMNS))),
             models.entries.HEADERS)
@@ -292,7 +293,7 @@ class MainWindow(QWidget):
         vHeader.setFixedWidth(width)
         vHeader.setMinimumWidth(width)
         self.stats_table.setMaximumHeight(150)
-        self.update_statistics()
+        self.stats_model.updateStats()
 
     def load_users(self):
         """Загружает данные из базы и обновляет модель"""
