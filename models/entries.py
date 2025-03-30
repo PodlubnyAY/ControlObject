@@ -125,22 +125,15 @@ class EntryStatsModel(QAbstractTableModel):
         self.proxy = proxy
     
     def updateStats(self):
-        rows = self.proxy.rowCount()
-        cols = self.proxy.columnCount()
+        for col in self._cols:
+            col_data = [
+                float(self.proxy.data(
+                    self.proxy.index(i, col), Qt.DisplayRole))
+                for i in range(self.proxy.rowCount())]
 
-        for col in range(cols):
-            values = []
-            for row in range(rows):
-                idx = self.proxy.index(row, col)
-                val = self.proxy.data(idx, Qt.DisplayRole)
-                try:
-                    values.append(float(val))
-                except:
-                    continue
-
-            if values:
-                mean = sum(values) / len(values)
-                variance = sum((x - mean)**2 for x in values) / len(values)
+            if col_data:
+                mean = sum(col_data) / len(col_data)
+                variance = sum((x - mean)*(x - mean) for x in col_data) / len(col_data)
                 self._stats[col] = (mean, variance)
             else:
                 self._stats[col] = (None, None)

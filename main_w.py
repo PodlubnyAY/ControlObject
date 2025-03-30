@@ -1,10 +1,11 @@
 import logging
+import os
 import numpy as np
 from functools import partial
 from datetime import datetime
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QGridLayout,
-    QTableView, QHeaderView, QLineEdit, QTabWidget, QLabel, QComboBox
+    QTableView, QHeaderView, QLineEdit, QTabWidget, QLabel, QComboBox, QFileDialog
 )
 from PySide6.QtCore import Qt, Signal
 
@@ -12,6 +13,7 @@ import plantm
 import config
 import models
 import widgets
+from openpyxl import Workbook
 from windows import MeasureWindow
 
 logger = logging.getLogger('measuring')
@@ -77,7 +79,7 @@ class MainWindow(QWidget):
             clicked=self.toggle_filter)
         save_button = QPushButton(
             "Сохранить выборку",
-            # clicked=self.save_view
+            clicked=self.save_view
         )
         exit_button = QPushButton("Выход", clicked=self.close_all)
 
@@ -100,7 +102,6 @@ class MainWindow(QWidget):
         self.load_entries()
         
         tab_widget.addTab(self.entries_view, "Кадры")
-        
         btns_layout = QHBoxLayout()
         btns_layout.addWidget(add_button)
         btns_layout.addWidget(filter_button)
@@ -386,3 +387,22 @@ class MainWindow(QWidget):
     def update_statistics(self):
         stats = self.calculate_statistics()
         self.stats_model.setStats(stats)
+
+    def save_view(self):
+        path, ok = QFileDialog.getSaveFileName(
+            self, 'Save CSV', os.getenv('HOME'),
+            ';;'.join((
+                'Excel Files (*.xls, *.xlsx)',
+                'All Files (*.*)')))
+        if ok:
+            wb = Workbook(write_only=True)
+            for i, t, model, h in zip(
+                    range(2),
+                    ('Пользователи', 'Записи'),
+                    (self.user_proxy_model, self.entry_proxy_model),
+                    (models.users.HEADERS, models.entries.HEADERS)):
+                ws = wb.create_sheet(t, i)
+                ws.append(h)
+                for line in model.data_generator():
+                    ws.append(line)
+            wb.save(path)
