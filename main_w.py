@@ -99,7 +99,13 @@ class MainWindow(QWidget):
         tab_widget.addTab(self.users_view, "Пользователи")
         
         self.entries_view = QTableView(sortingEnabled=True)
+        self.stats_table = QTableView()        
         self.load_entries()
+        vHeader = self.stats_table.verticalHeader()
+        vHeader.setSectionResizeMode(QHeaderView.Stretch)
+        width = sum(self.entries_view.columnWidth(i) for i in range(4))
+        vHeader.setFixedWidth(width)
+        vHeader.setMinimumWidth(width)
         
         tab_widget.addTab(self.entries_view, "Кадры")
         btns_layout = QHBoxLayout()
@@ -127,6 +133,7 @@ class MainWindow(QWidget):
     def close_all(self):
         for w in self.windows.values():
             w.close()
+        logger.info('Завершение работы')
         logger.removeHandler(self.layout().itemAt(4).widget())
         self.close()
 
@@ -248,6 +255,7 @@ class MainWindow(QWidget):
                 element.setCurrentIndex(0)
         self.user_proxy_model.clear_combo_filters()
         self.entry_proxy_model.clear_combo_filters()
+        logger.info('Фильтры сброшены')
     
     def remove_filter(self):
         while self.filter_layout.count():
@@ -273,28 +281,19 @@ class MainWindow(QWidget):
         self.entry_model = models.entries.DataTableModel(entries)
         self.entry_proxy_model = models.FilterProxyModel(models.entries.COLUMNS)
         self.entry_proxy_model.setSourceModel(self.entry_model)
-
-        self.stats_model = models.entries.EntryStatsModel()
-        self.stats_model.setProxyModel(self.entry_proxy_model)
-        self.stats_model.setStatsColumns(
-            list(range(3, len(models.entries.COLUMNS))),
-            models.entries.HEADERS)
-        
         self.entries_view.setModel(self.entry_proxy_model)
         self.entries_view.resizeColumnsToContents()
         header = self.entries_view.horizontalHeader()
         header.setSectionResizeMode(QHeaderView.Stretch)
         header.setSectionResizeMode(0, QHeaderView.ResizeToContents)
         
-        self.stats_table = QTableView()
+        self.stats_model = models.entries.EntryStatsModel()
+        self.stats_model.setProxyModel(self.entry_proxy_model)
+        self.stats_model.setStatsColumns(
+            list(range(3, len(models.entries.COLUMNS))),
+            models.entries.HEADERS)       
         self.stats_table.setModel(self.stats_model)
         self.stats_table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
-        vHeader = self.stats_table.verticalHeader()
-        vHeader.setSectionResizeMode(QHeaderView.Stretch)
-        width = sum(self.entries_view.columnWidth(i) for i in range(4))
-        vHeader.setFixedWidth(width)
-        vHeader.setMinimumWidth(width)
-        self.stats_table.setMaximumHeight(150)
         self.stats_model.updateStats()
 
     def load_users(self):
@@ -316,7 +315,7 @@ class MainWindow(QWidget):
                 results[ch] = self.plant.measure(ch)
             elif ch in config.STABLE_CHANNELS:
                 m = self.plant.measure(ch)
-                if (last := stable.get(ch)) is not None and last != m:
+                if (last := stable.get(ch, m)) != m:
                     logger.error(f'канал {ch}: нарушение стабильности ({last}->{m})')
                     return None
                 stable[ch] = m
@@ -325,7 +324,7 @@ class MainWindow(QWidget):
                     self.plant.measure(ch) for _ in range(config.MV_CHANNELS[ch])]
 
         return results
-        
+
     def get_frame(self, args):
         username, n_frames, comment = args
         date = datetime.now().date()
@@ -340,7 +339,7 @@ class MainWindow(QWidget):
 
         base_frame = [cur_research]
         frames = []
-        while n_frames > 0:
+        for _ in range(n_frames):
             frame = base_frame + [datetime.now().time()]
             results = self.measure()
             if results is None:
@@ -352,13 +351,15 @@ class MainWindow(QWidget):
                 session.add(entry)
                 session.commit()
 
-            n_frames -= 1
-        self.load_entries()
         self.load_users()
         self.filter_container.close()
         self.remove_filter()
         self.filter_widgets.clear()
         self.create_filter_widgets()
+        self.load_entries()
+        logger.info(
+            f'Пользователь "{username}" снял показания {n_frames} кадров, '
+            f'комментарий: "{comment}"')
         return frames
 
     def calculate_statistics(self):
@@ -391,19 +392,22 @@ class MainWindow(QWidget):
 
     def save_view(self):
         path, ok = QFileDialog.getSaveFileName(
-            self, 'Save CSV', os.getenv('HOME'),
+            self, 'Сохранение', os.getenv('HOME'),
             ';;'.join((
                 'Excel Files (*.xls, *.xlsx)',
                 'All Files (*.*)')))
-        if ok:
-            wb = Workbook(write_only=True)
-            for i, t, model, h in zip(
-                    range(2),
-                    ('Пользователи', 'Записи'),
-                    (self.user_proxy_model, self.entry_proxy_model),
-                    (models.users.HEADERS, models.entries.HEADERS)):
-                ws = wb.create_sheet(t, i)
-                ws.append(h)
-                for line in model.data_generator():
-                    ws.append(line)
-            wb.save(path)
+        if not ok:
+            logger.error(f'Ошибка сохранения в файл {path}')
+            return
+        wb = Workbook(write_only=True)
+        for i, t, model, h in zip(
+                range(2),
+                ('Пользователи', 'Записи'),
+                (self.user_proxy_model, self.entry_proxy_model),
+                (models.users.HEADERS, models.entries.HEADERS)):
+            ws = wb.create_sheet(t, i)
+            ws.append(h)
+            for line in model.data_generator():
+                ws.append(line)
+        wb.save(path)
+        logger.info(f'Выборка сохранена в файл {path}')
