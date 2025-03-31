@@ -127,6 +127,7 @@ class MainWindow(QWidget):
     def close_all(self):
         for w in self.windows.values():
             w.close()
+        logger.removeHandler(self.layout().itemAt(4).widget())
         self.close()
 
     def toggle_filter(self):
