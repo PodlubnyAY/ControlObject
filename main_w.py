@@ -1,18 +1,20 @@
 import logging
+import os
 import numpy as np
 from functools import partial
 from datetime import datetime
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QMessageBox, QGridLayout,
-    QTableView, QHeaderView, QLineEdit, QTabWidget, QLabel, QComboBox, QPlainTextDocumentLayout
+    QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QGridLayout,
+    QTableView, QHeaderView, QLineEdit, QTabWidget, QLabel, QComboBox, QFileDialog
 )
-from PySide6.QtCore import Qt, QSortFilterProxyModel, Signal
+from PySide6.QtCore import Qt, Signal
 
 import plantm
 import config
 import models
 import widgets
-from windows import MeasureWindow, FilterWindow
+from openpyxl import Workbook
+from windows import MeasureWindow
 
 logger = logging.getLogger('measuring')
 logger.setLevel(10)
@@ -77,6 +79,7 @@ class MainWindow(QWidget):
             clicked=self.toggle_filter)
         save_button = QPushButton(
             "Сохранить выборку",
+            clicked=self.save_view
         )
         exit_button = QPushButton("Выход", clicked=self.close_all)
 
@@ -88,55 +91,62 @@ class MainWindow(QWidget):
         self.general_widgets = []
         # self.create_filter_widgets()  # Создаем фильтры сразу
 
-        # Таблица
+        # Таблицы
         tab_widget = QTabWidget()
         
         self.users_view = QTableView(sortingEnabled=True)
         self.load_users()
-        tab_widget.addTab(self.users_view, "Users")
+        tab_widget.addTab(self.users_view, "Пользователи")
         
         self.entries_view = QTableView(sortingEnabled=True)
+        self.stats_table = QTableView()        
         self.load_entries()
+        vHeader = self.stats_table.verticalHeader()
+        vHeader.setSectionResizeMode(QHeaderView.Stretch)
+        width = sum(self.entries_view.columnWidth(i) for i in range(4))
+        vHeader.setFixedWidth(width)
+        vHeader.setMinimumWidth(width)
         
-        tab_widget.addTab(self.entries_view, "Entries")
-        
+        tab_widget.addTab(self.entries_view, "Кадры")
         btns_layout = QHBoxLayout()
         btns_layout.addWidget(add_button)
         btns_layout.addWidget(filter_button)
         btns_layout.addWidget(save_button)
         
-        #footer
-        footer = QWidget()
-        footer_layout = QHBoxLayout()
         logpane = widgets.LogWidget(level=logger.level)
         logger.addHandler(logpane)
-        footer_layout.addWidget(logpane)
-        footer_layout.addWidget(exit_button)
-        footer_layout.setAlignment(
-            exit_button,
-            Qt.AlignmentFlag.AlignBottom| Qt.AlignmentFlag.AlignRight)
-        footer.setLayout(footer_layout)
         
         layout = QVBoxLayout()
         layout.addLayout(btns_layout)
         layout.addWidget(self.filter_container, stretch=2)
         # layout.addWidget(self.table_view)
         layout.addWidget(tab_widget, stretch=6)
-        layout.addWidget(footer, stretch=1)
+        self.stats_table.setFixedHeight(80)
+        layout.addWidget(self.stats_table)
+        layout.addWidget(logpane, stretch=1)
+        layout.addWidget(exit_button)
+        layout.setAlignment(
+            exit_button,
+            Qt.AlignmentFlag.AlignBottom| Qt.AlignmentFlag.AlignRight)
         self.setLayout(layout)
     
     def close_all(self):
         for w in self.windows.values():
             w.close()
+        logger.info('Завершение работы')
+        logger.removeHandler(self.layout().itemAt(4).widget())
         self.close()
 
     def toggle_filter(self):
         """Показывает/скрывает все комбобоксы и сбрасывает фильтры"""
         state = not self.filter_container.isVisible()
+        filter_button = self.layout().itemAt(0).itemAt(1).widget()
         if state:
+            filter_button.setText('Сброс')
             if not self.filter_widgets:  # Проверяем, если комбобоксы еще не созданы
                 self.create_filter_widgets()
         else:
+            filter_button.setText('Фильтровать')
             self.clear_filters()
         self.filter_container.setVisible(state)
 
@@ -151,6 +161,7 @@ class MainWindow(QWidget):
 
     def get_line_edit(self, table_name, column_number, placeholder):
         edit = QLineEdit(placeholderText=placeholder)
+        edit.setFixedSize(100, 20)
         edit.textChanged.connect(
             partial(
                 self.update_range_filter,
@@ -217,6 +228,7 @@ class MainWindow(QWidget):
         if table_name != "Users":
             proxy_model = self.entry_proxy_model
         proxy_model.set_combo_filter(column_name, filter_value)
+        self.stats_model.updateStats()
     
     def update_range_filter(self, table_name, column, ismin, text, *args):
         proxy_model = self.user_proxy_model
@@ -230,6 +242,7 @@ class MainWindow(QWidget):
             max_value = value
 
         proxy_model.set_range_filter(column, min_value, max_value)
+        self.stats_model.updateStats()
 
     def clear_filters(self):
         """Очищает все фильтры и сбрасывает комбобоксы"""
@@ -242,6 +255,7 @@ class MainWindow(QWidget):
                 element.setCurrentIndex(0)
         self.user_proxy_model.clear_combo_filters()
         self.entry_proxy_model.clear_combo_filters()
+        logger.info('Фильтры сброшены')
     
     def remove_filter(self):
         while self.filter_layout.count():
@@ -272,6 +286,15 @@ class MainWindow(QWidget):
         header = self.entries_view.horizontalHeader()
         header.setSectionResizeMode(QHeaderView.Stretch)
         header.setSectionResizeMode(0, QHeaderView.ResizeToContents)
+        
+        self.stats_model = models.entries.EntryStatsModel()
+        self.stats_model.setProxyModel(self.entry_proxy_model)
+        self.stats_model.setStatsColumns(
+            list(range(3, len(models.entries.COLUMNS))),
+            models.entries.HEADERS)       
+        self.stats_table.setModel(self.stats_model)
+        self.stats_table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+        self.stats_model.updateStats()
 
     def load_users(self):
         """Загружает данные из базы и обновляет модель"""
@@ -292,8 +315,8 @@ class MainWindow(QWidget):
                 results[ch] = self.plant.measure(ch)
             elif ch in config.STABLE_CHANNELS:
                 m = self.plant.measure(ch)
-                if (last := stable.get(ch)) is not None and last != m:
-                    logger.error(f'{ch} not stable ({last}->{m})')
+                if (last := stable.get(ch, m)) != m:
+                    logger.error(f'канал {ch}: нарушение стабильности ({last}->{m})')
                     return None
                 stable[ch] = m
             elif ch in config.MV_CHANNELS:
@@ -301,7 +324,7 @@ class MainWindow(QWidget):
                     self.plant.measure(ch) for _ in range(config.MV_CHANNELS[ch])]
 
         return results
-        
+
     def get_frame(self, args):
         username, n_frames, comment = args
         date = datetime.now().date()
@@ -316,7 +339,7 @@ class MainWindow(QWidget):
 
         base_frame = [cur_research]
         frames = []
-        while n_frames > 0:
+        for _ in range(n_frames):
             frame = base_frame + [datetime.now().time()]
             results = self.measure()
             if results is None:
@@ -328,11 +351,63 @@ class MainWindow(QWidget):
                 session.add(entry)
                 session.commit()
 
-            n_frames -= 1
-        self.load_entries()
         self.load_users()
         self.filter_container.close()
         self.remove_filter()
         self.filter_widgets.clear()
         self.create_filter_widgets()
+        self.load_entries()
+        logger.info(
+            f'Пользователь "{username}" снял показания {n_frames} кадров, '
+            f'комментарий: "{comment}"')
         return frames
+
+    def calculate_statistics(self):
+        stats = {}
+        rows = self.entry_proxy_model.rowCount()
+        cols = self.entry_proxy_model.columnCount()
+        
+        for col in range(cols):
+            values = []
+            for row in range(rows):
+                idx = self.entry_proxy_model.index(row, col)
+                val = self.entry_proxy_model.data(idx, Qt.DisplayRole)
+                try:
+                    values.append(float(val))
+                except:
+                    continue
+
+            if values:
+                mean = sum(values) / len(values)
+                variance = sum((x - mean)**2 for x in values) / len(values)
+                stats[col] = (mean, variance)
+            else:
+                stats[col] = (None, None)
+        
+        return stats
+
+    def update_statistics(self):
+        stats = self.calculate_statistics()
+        self.stats_model.setStats(stats)
+
+    def save_view(self):
+        path, ok = QFileDialog.getSaveFileName(
+            self, 'Сохранение', os.getenv('HOME'),
+            ';;'.join((
+                'Excel Files (*.xls, *.xlsx)',
+                'All Files (*.*)')))
+        if not ok:
+            logger.error(f'Ошибка сохранения в файл {path}')
+            return
+        wb = Workbook(write_only=True)
+        for i, t, model, h in zip(
+                range(2),
+                ('Пользователи', 'Записи'),
+                (self.user_proxy_model, self.entry_proxy_model),
+                (models.users.HEADERS, models.entries.HEADERS)):
+            ws = wb.create_sheet(t, i)
+            ws.append(h)
+            for line in model.data_generator():
+                ws.append(line)
+        wb.save(path)
+        logger.info(f'Выборка сохранена в файл {path}')

@@ -5,7 +5,6 @@ from .entries import TIME_FORMAT
 
 
 class FilterProxyModel(QSortFilterProxyModel):
-# class FilterProxyModel(QSortFilterProxyModel):
     def __init__(self, columns, parent=None):
         super().__init__(parent)
         self.columns = columns
@@ -70,3 +69,17 @@ class FilterProxyModel(QSortFilterProxyModel):
                 except ValueError:
                     pass
         return accept
+    
+    def data_generator(self, yield_by_cols=False):
+        n1, n2 = self.rowCount(), self.columnCount()
+        if yield_by_cols:
+            n1, n2 = n2, n1
+            
+        for i in range(n1):
+            values = []
+            for j in range(n2):
+                loc = (j, i) if yield_by_cols else (i, j)
+                idx = self.index(*loc)
+                v = self.data(idx, Qt.DisplayRole)
+                values.append(v)
+            yield values
